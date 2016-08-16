@@ -2,6 +2,51 @@
 %META:TOPICPARENT{name="JsonSQLPlugin"}%
 ---+!! Testing !JsonSQLPlugin 
 
-SOME EXAMPLES OF THE PLUGIN
+<form method="post" action="%SCRIPTURL{"jsonrpc"}%/jsontest/select">
+<input type="hidden" name="fields" value='[{"column": "field1"},{"column": "field2", "alias": "test"}]' />
+<input type="hidden" name="from" value='[{"table": "table1", "schema": "MySchema"}]' />
+<input type="hidden" name="from" value='{"and": [{ "eq": {"field": {"column": "field2"}, "value": "Test.Field2"} },{ "eq": {"field": {"column": "field1"}, "value": "453.6"} },{ "or": [{ "eq": {"field": {"column": field2"}, "value": "field3"} },{ "gt": {"field": {"column": "field3"}, "value": "45"} }]}]}' />
+<input type="submit"/>
+</form>
+%JQREQUIRE{"jsonrpc"}%
+
+<script>
+var myObj =
+{
+   "fields": [
+      {"column": "field1"},
+      {"column": "field2", "alias": "test"}
+   ],
+   "from": [
+       {"table": "table1", "schema": "MySchema"}
+   ],
+   "where": {
+      "and": [
+          { "eq": {"field": {"column": "field2"}, "value": "Test.Field2"} },
+          { "eq": {"field": {"column": "field1"}, "value": "453.6"} },
+          { "or": [
+              { "eq": {"field": {"column": "field2"}, "value": "field3"} },
+              { "gt": {"field": {"column": "field3"}, "value": "45"} }
+          ]}
+      ]
+   }
+};
+
+$.jsonRpc(
+  "%SCRIPTURL{"jsonrpc"}%",
+  {
+    namespace: "jsontest",
+    method: "select",
+    params: {
+       jsonQuery: JSON.stringify(myObj),
+    },
+    error: function(jsonResponse, textStatus, xhr) { alert(jsonResponse.toSource()) },
+    success: function(jsonResponse, textStatus, xhr) { alert(jsonResponse.toSource()) }
+  }
+);
+
+
+</script>
+
 
 __Related:__ %SYSTEMWEB%.JsonSQLPlugin
