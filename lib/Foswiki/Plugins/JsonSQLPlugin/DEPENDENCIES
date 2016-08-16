@@ -1,0 +1,4 @@
+Foswiki::Func,>=0,cpan,May be required for lib/Foswiki/Plugins/JsonSQLPlugin.pm
+Foswiki::Plugins,>=0,cpan,May be required for lib/Foswiki/Plugins/JsonSQLPlugin.pm
+JsonSQL::Query::Select,>=0,cpan,May be required for lib/Foswiki/Plugins/JsonSQLPlugin.pm
+JsonSQL::Validator,>=0,cpan,May be required for lib/Foswiki/Plugins/JsonSQLPlugin.pm

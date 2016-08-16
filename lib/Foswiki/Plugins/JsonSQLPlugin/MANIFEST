@@ -1,6 +1,8 @@
-!noci
-data/System/JsonSQLPlugin.txt 0644 Documentation page
-data/System/VarEXAMPLETAG.txt 0644 Tag documentation
-data/Sandbox/PluginTestJsonSQLPlugin.txt 0644 Examples
-lib/Foswiki/Plugins/JsonSQLPlugin.pm 0444 Perl module
-lib/Foswiki/Plugins/JsonSQLPlugin/Config.spec 0444 Configuration
+data/Sandbox/PluginTestJsonSQLPlugin.txt 0664
+data/System/JsonSQLPlugin.txt 0664
+data/System/VarEXAMPLETAG.txt 0664
+lib/Foswiki/Plugins/JsonSQLPlugin.pm 0664
+lib/Foswiki/Plugins/JsonSQLPlugin/Config.spec 0664
+lib/Foswiki/Plugins/JsonSQLPlugin/DEPENDENCIES 0664
+test/unit/JsonSQLPlugin/JsonSQLPluginSuite.pm 0664
+test/unit/JsonSQLPlugin/JsonSQLPluginTests.pm 0664
