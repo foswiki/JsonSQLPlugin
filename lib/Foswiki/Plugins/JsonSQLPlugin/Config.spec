@@ -1,0 +1,3 @@
+# ---+ Extensions
+# ---++ JsonSQLPlugin
+1;
