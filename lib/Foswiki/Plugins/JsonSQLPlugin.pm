@@ -1,6 +1,6 @@
 # See bottom of file for default license and copyright information
 
-=begin
+=begin TML
 
 ---+ package Foswiki::Plugins::JsonSQLPlugin
 
@@ -73,6 +73,9 @@ use Foswiki::Plugins ();    # For the API version
 
 use JsonSQL::Query::Select;
 use JsonSQL::Validator;
+use Data::Dumper;
+use DBI;
+use JSON qw( encode_json );
 
 # $VERSION is referred to by Foswiki, and is the only global variable that
 # *must* exist in this package. For best compatibility, the simple quoted decimal
@@ -121,7 +124,7 @@ our $SHORTDESCRIPTION = 'Provides JSON handlers for interacting with SQL databas
 # entries so they can be used with =configure=.
 our $NO_PREFS_IN_TOPIC = 1;
 
-=begin
+=begin TML
 
 ---++ initPlugin($topic, $web, $user) -> $boolean
    * =$topic= - the name of the topic in the current CGI query
@@ -188,16 +191,59 @@ sub initPlugin {
     #    description => 'Example handler for Empty Plugin'
     #);
 
-    Foswiki::Contrib::JsonRpcContrib::registerMethod("jsontest", "select", \&mytest);
+    Foswiki::Contrib::JsonRpcContrib::registerMethod("jsontest", "select", \&jsontest);
+    Foswiki::Contrib::JsonRpcContrib::registerMethod("jsondbget", "select", \&jsondbget);
     
     # Plugin correctly initialized
     return 1;
 }
 
-sub mytest {
-    my ($session, $request) = @_;
-    
-    return $request;
+sub jsondbget {
+	my ($session, $request) = @_;
+
+	my $submittedJson = $request->param('jsonQuery');
+	my $perldata = JsonSQL::Validator->validate_schema($submittedJson, 'select');
+
+	my $selectObj = JsonSQL::Query::Select->new($perldata);
+	my ($sql, $binds) = $selectObj->get_select;
+
+## This block implements access controls. Need to adapt for JSON.
+#
+#    my ( $session, $params, $theTopic, $theWeb ) = @_;
+#
+#    my $web   = $params->{web}   || $theWeb;
+#    my $topic = $params->{topic} || $theTopic;
+#    ( $web, $topic ) = Foswiki::Func::normalizeWebTopicName( $web, $topic );
+#    my $join = $params->{join} || 'no';
+#
+    # check topic exists
+#    unless ( Foswiki::Func::topicExists( $web, $topic ) ) {
+#        return
+#"<noautolink><span class='foswikiAlert'>HistoryPlugin error: Topic $web.$topic does not exist</noautolink>";
+#    }
+#
+#    # check access permissions
+#    unless (
+#        Foswiki::Func::checkAccessPermission(
+#            "VIEW", $session->{user}, undef, $topic, $web
+#        )
+#      )
+#    {
+#        throw Foswiki::AccessControlException( "VIEW", $session->{user}, $web,
+#            $topic, $Foswiki::Meta::reason );
+#    }
+
+    my $dbh = DBI->connect('dbi:Pg:dbname=idast;host=idastdb-1','idastwiki','idastwiki',{AutoCommit=>1,RaiseError=>1,PrintError=>0});
+    my $result = $dbh->selectall_arrayref( $sql, { Slice => {} }, @$binds );
+#    foreach my $row ( @$result ) {
+#      print "Employee: $emp->{ename}\n";
+#    }
+    $dbh->disconnect;
+
+#Foswiki::Func::writeDebug($ret);
+    my $retJson = encode_json($result);
+    return $retJson;
+
 }
 
 sub jsontest {
@@ -224,12 +270,24 @@ sub jsontest {
 	}
 }';
 
-my $perldata = JsonSQL::Validator->validate_schema($json, 'select');
+#my $perldata = JsonSQL::Validator->validate_schema($json, 'select');
 
-my $select = JsonSQL::Query::Select->new($perldata);
+#my $select = JsonSQL::Query::Select->new($perldata);
 
-my ($sql, $binds) = $select->get_select;
+#my ($sql, $binds) = $select->get_select;
+#my $ret = $sql . "\n" . join(", ", @{ $binds }) . "\n";
+
+#return $ret;
+
+my $submittedJson = $request->param('jsonQuery');
+my $perldata = JsonSQL::Validator->validate_schema($submittedJson, 'select');
+
+my $selectObj = JsonSQL::Query::Select->new($perldata);
+
+my ($sql, $binds) = $selectObj->get_select;
 my $ret = $sql . "\n" . join(", ", @{ $binds }) . "\n";
+
+#Foswiki::Func::writeDebug($ret);
 
 return $ret;
 
