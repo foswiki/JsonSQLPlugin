@@ -1,8 +1,4 @@
-data/Sandbox/PluginTestJsonSQLPlugin.txt 0664
 data/System/JsonSQLPlugin.txt 0664
-data/System/VarEXAMPLETAG.txt 0664
 lib/Foswiki/Plugins/JsonSQLPlugin.pm 0664
 lib/Foswiki/Plugins/JsonSQLPlugin/Config.spec 0664
 lib/Foswiki/Plugins/JsonSQLPlugin/DEPENDENCIES 0664
-test/unit/JsonSQLPlugin/JsonSQLPluginSuite.pm 0664
-test/unit/JsonSQLPlugin/JsonSQLPluginTests.pm 0664
