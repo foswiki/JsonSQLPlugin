@@ -3,11 +3,11 @@
 # IdastDBPlugin is Copyright (C) 2016 Chris Hoefler http://draper.com/
 #
 
-package Foswiki::Plugins::JsonSQLPlugin;
-
 use strict;
 use warnings;
-use v5.10;    # Use for/when statement
+use 5.014;
+
+package Foswiki::Plugins::JsonSQLPlugin;
 
 use Foswiki::Func    ();    # The plugins API
 use Foswiki::Plugins ();    # For the API version
@@ -15,15 +15,16 @@ use Foswiki::Plugins ();    # For the API version
 use JsonSQL::Query::Select;
 use JsonSQL::Query::Insert;
 use JsonSQL::Validator;
-use Data::Dumper;
-use constant DEBUG => 1;    # toggle me
+
 use DBI;
 use JSON qw( encode_json decode_json to_json from_json );
 
-our $VERSION = '0.1';
-our $RELEASE = '16 Aug 2016';
-our $SHORTDESCRIPTION =
-  'Provides JSON handlers for interacting with SQL databases';
+#use Data::Dumper;
+#use constant DEBUG => 1;    # toggle me
+
+our $VERSION = '0.4';
+our $RELEASE = '01 Aug 2017';
+our $SHORTDESCRIPTION = 'Provides JSON handlers for interacting with SQL databases';
 our $NO_PREFS_IN_TOPIC = 1;
 
 sub initPlugin {
@@ -36,20 +37,26 @@ sub initPlugin {
         return 0;
     }
 
-    #    Foswiki::Func::registerTagHandler( 'FORMATID', \&_formatId );
-
-#    Foswiki::Contrib::JsonRpcContrib::registerMethod("jsontest", "select", \&jsontest);
-    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb", "select",
-        \&jsondbget );
-    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb",
-        "selectwithsearch", \&jsondbgetandsearch );
-
-#    Foswiki::Contrib::JsonRpcContrib::registerMethod("processjson", "idtopics", \&idtotopic);
-    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb", "insert",
-        \&jsondbinsert );
+    # JsonRpc Handlers
+    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb", "select", \&jsondbget );
+    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb", "selectwithsearch", \&jsondbgetandsearch );
+    Foswiki::Contrib::JsonRpcContrib::registerMethod( "jsondb", "insert", \&jsondbinsert );
 
     return 1;
 }
+
+=pod PrivateMethod _dbConnect($dbname, $queryop) -> $dbh
+
+First parses the $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbusermap} configuration setting to identify the correct DB user and pass to
+use for connecting to the DB indicated by $dbname and performing the operation indicated by $opname.
+
+Then parses the $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbconnections} configuration setting, first identifying the DB namespace entry
+indicated by $dbname, and then establishing a DB connection using the dsn property of the DB namespace and the previously found DB username
+and password.
+
+Returns a Perl DBI database handle if successful, or (0, <err msg>) if it fails.
+
+=cut
 
 sub _dbConnect {
     my ( $dbname, $queryop ) = @_;
@@ -72,7 +79,7 @@ sub _dbConnect {
               && exists( $_->{$dbname} )
         } @{$usermap};
 
-# This will go in order through @group_acls. Later definitions will override earlier definitions.
+        # This will go in order through @group_acls. Later definitions will override earlier definitions.
         for my $groupdef (@group_acls) {
             if ( $queryop && exists( $groupdef->{$dbname}->{$queryop} ) ) {
                 $db_user = $groupdef->{$dbname}->{$queryop}->{user};
@@ -125,6 +132,15 @@ sub _dbConnect {
     }
 }
 
+=pod PrivateMethod _checkAcl($dbname, $queryop) -> $whitelist_rules
+
+Parses the $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbconnections} configuration setting, first identifying the DB namespace entry
+indicated by $dbname, then the set of whitelist rules to be applied for a give Foswiki user/group and DB operation combination.
+
+Returns an arrayref of whitelist rules for use with JsonSQL if successful, or (0, <err msg>) if it fails.
+
+=cut
+
 sub _checkAcl {
     my ( $dbname, $queryop ) = @_;
 
@@ -163,7 +179,7 @@ sub _checkAcl {
             Foswiki::Func::writeDebug( "Group ACL Keys: " . Dumper(@acl_keys) )
               if DEBUG;
 
-# This will go in order through @acl_keys. Later definitions will override earlier definitions.
+            # This will go in order through @acl_keys. Later definitions will override earlier definitions.
             for my $acl_key (@acl_keys) {
                 if ( exists( $acl_key->{whitelist_rules} ) ) {
                     $whitelist_rules = $acl_key->{whitelist_rules};
@@ -199,57 +215,13 @@ sub _checkAcl {
     }
 }
 
-=pod
+=pod PrivateMethod _doSelectQuery($jsonQuery, $dbname) => \@result
 
-sub handleError {
-    my $result = shift;
+Grabs the whitelist rules for the currently logged in user specified for SELECT operations on $dbname. Then generates the SQL from
+$jsonQuery. If successful, continues on to grab a database handle and perform the query. The result is parsed into an arrayref sliced
+as a hashref keyed to each column for each row in the result.
 
-    if ( eval { $result->is_error } ) {
-        my $err;
-        for ( $result->type ) {
-            when ( 'validate' ) {
-                $err = "JSON schema validation error: <br />";
-                $err .= "$result->{message} <br />";
-                $err =~ s/\n/\<br \/\>/;
-            }
-            default {
-                $err = "An unspecified error occurred. <br />";
-            }
-        }
-        return $err;
-    }
-}
-
-=cut
-
-=pod
-
-sub idtotopic {
-	my ($session, $request) = @_;
-
-## processParams = { "id" => idfield, "pad" => padding value, "prefix" => topicprefix }
-	my $jsonToProcess = $request->param('jsonQuery');
-	my $processParams = $request->param('processParams');
-
-        my $perldata = from_json($jsonToProcess);
-        my $params = from_json($processParams);
-        my $web = $request->param('web');
-	my $idfield = $params->{id};
-	my $sprintf_format = '%s%0' . $params->{pad} . 'd';
-	my $ret;
-        for my $sqlResult (@{ $perldata }) {
-		my $id = $sqlResult->{$idfield};
-		my $formattedId = sprintf($sprintf_format, $params->{prefix}, $id);
-my $topicExists = Foswiki::Func::topicExists($web, $formattedId);
-		if ($topicExists) {
-    			push(@{$ret}, {"id" => $formattedId, "exists" => "yes"});
-		} else {
-    			push(@{$ret}, {"id" => $formattedId, "exists" => "no"});
-		}
-	}
-
-	return encode_json($ret);
-}
+Returns the arrayref if successful, or (0, <err msg>) if it fails.
 
 =cut
 
@@ -288,6 +260,16 @@ sub _doSelectQuery {
     }
 }
 
+=pod ClassMethod jsondbget($session, $request) => $json
+
+The JSON-RPC handler for jsondb.select.
+
+Expects jsonQuery and dbName as $request parameters. Performs the query and returns the result as encoded JSON.
+
+Returns the stringified JSON if successful, or throws a Foswiki::Contrib::JsonRpcContrib::Error if it fails.
+
+=cut
+
 sub jsondbget {
     my ( $session, $request ) = @_;
 
@@ -302,6 +284,17 @@ sub jsondbget {
     my $retJson = encode_json($queryResult);
     return $retJson;
 }
+
+=pod ClassMethod jsondbgetandsearch($session, $request) => $json
+
+The JSON-RPC handler for jsondb.selectwithsearch.
+
+Expects jsonQuery, dbName, and searchTopics as $request parameters. If searchTopics is not specified, this will behave like a plain
+jsondbget. Performs the query, does the topic SEARCH, and merges and returns the results as encoded JSON.
+
+Returns the stringified JSON if successful, or throws a Foswiki::Contrib::JsonRpcContrib::Error if it fails.
+
+=cut
 
 sub jsondbgetandsearch {
     my ( $session, $request ) = @_;
@@ -375,6 +368,20 @@ sub jsondbgetandsearch {
     return $retJson;
 }
 
+=pod ClassMethod jsondbinsert($session, $request) => $json
+
+The JSON-RPC handler for jsondb.insert.
+
+Grabs the whitelist rules for the currently logged in user specified for INSERT operations on dbName. Then generates the SQL for each
+JSON INSERT query defined in jsonQuery. If successful, continues on to grab a database handle and perform each query. The results of batched
+queries are collected in @resultsArray, and can either be a plain "# of rows" result *OR*, if the RETURNING clause feature of JsonSQL is used,
+a final SELECT is done after the INSERT to get the updated table rows after the INSERT completes. The result in this case is parsed into an 
+a hashref keyed to each column of the table row returned.
+
+Returns a JSON encoded and stringified @resultsArray if successful, or throws a Foswiki::Contrib::JsonRpcContrib::Error if it fails.
+
+=cut
+
 sub jsondbinsert {
     my ( $session, $request ) = @_;
 
@@ -421,207 +428,8 @@ sub jsondbinsert {
     else {
         throw Foswiki::Contrib::JsonRpcContrib::Error( -32603, $err );
     }
-
- #	my $perldata = JsonSQL::Validator->validate_schema($submittedJson, 'insert');
- #        print Dumper($perldata);
- #	my $insertObj = JsonSQL::Query::Insert->new($perldata);
-
-    #	my ($sql, $binds) = $insertObj->get_all_inserts;
-    #	print Dumper($sql) . "\n";
-    #	print Dumper($binds) . "\n";
-
-#	my $dbh = DBI->connect('dbi:Pg:dbname=idast;host=idastdb-1','idastwiki','idastwiki',{AutoCommit=>1,RaiseError=>1,PrintError=>0});
-
-    #	$dbh->disconnect;
 }
 
-#sub jsondbgetandsearch {
-## This method needs access controls. ##
-
-#	my ($session, $request) = @_;
-
-#	my $submittedJson = $request->param('jsonQuery');
-#	my $searchParamString = $request->param('searchParams');
-#	my $searchParams = decode_json($searchParamString);
-#	return $searchParams;
-## { web: "web", topicPrefix: "", useForm: "", useMeta: "", metaFields: "", returnMany: false } ##
-
-#	my $defaultParams = { 'web' => 'Main', 'topicPrefix' => '', 'useForm' => '', 'useMeta' => '', 'metaFields' => '', 'returnMany' => 0 };
-#	for my $param ( keys %{ $defaultParams } ) {
-#	    if ( not defined $searchParams->{$param} ) {
-#	        $searchParams->{$param} = $defaultParams->{$param};
-#	    }
-#	};
-
-#	my @sharedQueryStrings;
-#	if ( length $searchParams->{topicPrefix} ) {
-#	    push(@sharedQueryStrings, "name ~ $searchParams->{topicPrefix}*");
-#	}
-#	if ( length $searchParams->{useForm} ) {
-#	    push(@sharedQueryStrings, "form.name ~ *$searchParams->{useForm}");
-#	}
-
-#	my $queryResults = _doSelectQuery($submittedJson);
-
-#    my @testResults;
-#    for my $result ( @{ $queryResults } ) {
-#        my @queryStrings;
-#        push(@queryStrings, @sharedQueryStrings);
-#        if ( length $searchParams->{useForm} ) {
-#            for my $field ( @{ $searchParams->{metaFields} } ) {
-#                my $string = "$searchParams->{useForm}";
-#                $string .= "[name='$field'].value = '$result->{$field}'";
-#                push(@queryStrings, $string);
-#            }
-#	    } elsif ( length $searchParams->{useMeta} ) {
-#	        for my $field ( @{ $searchParams->{metaFields} } ) {
-#	            my $string = "$searchParams->{useMeta}";
-#               $string .= "[name='$field'].value = '$result->{$field}'";
-#               push(@queryStrings, $string);
-#           }
-#	    }
-
-#	    my $queryString = join(' AND ', @queryStrings);
-#	    push(@testResults, $queryString);
-#        my $topicSearchResult = Foswiki::Func::query( $queryString, undef, { web => $searchParams->{web} } );
-#        my @foundTopics;
-#        while ( $topicSearchResult->hasNext ) {
-#            my $webtopic = $topicSearchResult->next;
-#            my ($web, $topic) = Foswiki::Func::normalizeWebTopicName('', $webtopic);
-#            push(@foundTopics, "$web.$topic");
-#        }
-
-#        if ( $searchParams->{returnMany} ) {
-#            $result->{topicsFound} = \@foundTopics;
-#        } else {
-#          push(@testResults, { topicsFound => @foundTopics[0] || '' });
-#            $result->{topicsFound} = @foundTopics[0] || '';
-#        }
-#    }
-
-# my $retJson = encode_json($queryResults);
-#    my $retJson = encode_json(\@testResults);
-
-#    return $retJson;
-#}
-
-#	my $formatId = $request->param('formatId');
-#    my $returnSearch = $request->param('returnSearch');
-
-#Foswiki::Func::writeDebug($ret);
-#    if ($formatId) {
-#	my $formatParams = from_json($formatId);
-#	my $withParams = $formatParams->{with};
-## $formatParams = {"idfield": idfield, "as": resultfield, "with": {"pad": pad, "prefix": prefix}}
-#	my $sprintf_format = '%s%0' . $withParams->{pad} . 'd';
-#	for my $sqlResult (@{$result}) {
-#		my $formattedId = sprintf($sprintf_format, $withParams->{prefix}, $sqlResult->{$formatParams->{idfield}});
-#		$sqlResult->{$formatParams->{as}} = $formattedId;
-#
-#		if ($returnSearch) {
-#			my $searchParams = from_json($returnSearch);
-#			my $searchTopic = $searchParams->{topicPrefix} . $formattedId;
-#			my $topicExists = Foswiki::Func::topicExists($searchParams->{web}, $searchTopic);
-#			if ($topicExists) {
-#				$sqlResult->{"topicExists"} = $searchTopic;
-#			}
-#		}
-#	}
-#   }
-
-#return $sql;
-## This block implements access controls. Need to adapt for JSON.
-#
-#    my ( $session, $params, $theTopic, $theWeb ) = @_;
-#
-#    my $web   = $params->{web}   || $theWeb;
-#    my $topic = $params->{topic} || $theTopic;
-#    ( $web, $topic ) = Foswiki::Func::normalizeWebTopicName( $web, $topic );
-#    my $join = $params->{join} || 'no';
-#
-# check topic exists
-#    unless ( Foswiki::Func::topicExists( $web, $topic ) ) {
-#        return
-#"<noautolink><span class='foswikiAlert'>HistoryPlugin error: Topic $web.$topic does not exist</noautolink>";
-#    }
-#
-#    # check access permissions
-#    unless (
-#        Foswiki::Func::checkAccessPermission(
-#            "VIEW", $session->{user}, undef, $topic, $web
-#        )
-#      )
-#    {
-#        throw Foswiki::AccessControlException( "VIEW", $session->{user}, $web,
-#            $topic, $Foswiki::Meta::reason );
-#    }
-
-=pod
-
-sub _formatId {
-    my ($session, $params, $topic, $web, $topicObject) = @_;
-
-    my $id = $params->{id} || $params->{_DEFAULT};
-    my $pad = $params->{pad} || '4';
-    my $prefix = $params->{prefix} || '';
-
-    my $sprintf_format = '%s%0' . $pad . 'd';
-
-    return sprintf($sprintf_format, $prefix, $id);
-}
-
-=cut
-
-=pod
-
-sub jsontest {
-    my ($session, $request) = @_;
-    
-    my $json = '
-{
-    "fields": [
-		{"column": "field1"},
-		{"column": "field2", "alias": "test"}
-	],
-	"from": [
-	    {"table": "table1", "schema": "MySchema"}
-	], 
-	"where": {
-		"and": [
-		    { "eq": {"field": {"column": "field2"}, "value": "Test.Field2"} },
-		    { "eq": {"field": {"column": "field1"}, "value": "453.6"} },
-		    { "or": [
-		        { "eq": {"field": {"column": "field2"}, "value": "field3"} },
-		        { "gt": {"field": {"column": "field3"}, "value": "45"} }
-		    ]}
-		]
-	}
-}';
-
-#my $perldata = JsonSQL::Validator->validate_schema($json, 'select');
-
-#my $select = JsonSQL::Query::Select->new($perldata);
-
-#my ($sql, $binds) = $select->get_select;
-#my $ret = $sql . "\n" . join(", ", @{ $binds }) . "\n";
-
-#return $ret;
-
-my $submittedJson = $request->param('jsonQuery');
-my $perldata = JsonSQL::Validator->validate_schema($submittedJson, 'select');
-
-my $selectObj = JsonSQL::Query::Select->new($perldata);
-
-my ($sql, $binds) = $selectObj->get_select;
-my $ret = $sql . "\n" . join(", ", @{ $binds }) . "\n";
-
-#Foswiki::Func::writeDebug($ret);
-
-return $ret;
-
-}
-
-=cut
 
 1;
 
