@@ -68,7 +68,7 @@ $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbconnections} = {
                 whitelist_rules => [
                     {
                         schema => 'product_schema',
-                        '#anyTable'
+                        '#anyTable' => ''
                     }
                 ]
             }
@@ -88,7 +88,7 @@ $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbconnections} = {
                 whitelist_rules => [
                     {
                         schema => 'product_schema',
-                        '#anyTable'
+                        '#anyTable' => ''
                     }
                 ]
             }
