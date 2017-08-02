@@ -1,32 +1,515 @@
-%META:TOPICINFO{author="ProjectContributor" date="1457496285" format="1.1" version="1"}%
+%META:TOPICINFO{author="ChrisHoefler" date="1457496285" format="1.1" version="1"}%
 %META:TOPICPARENT{name="Plugins"}%
----+!! Empty Plugin
-%FORMFIELD{"Description"}%
+----+!! %TOPIC%
+%$SHORTDESCRIPTION%
+
+%STARTSECTION{"summary"}%
+[[https://metacpan.org/pod/JsonSQL][JsonSQL]] is a CPAN module that generates SQL from well-formed JSON that conforms to a prescribed JSON schema. 
+It supports most of the common SQL features for SELECT and INSERT statements, as well as a whitelisting mechanism that blocks SQL 
+generation for tables and table columns that are not explicitly allowed. See [[https://metacpan.org/pod/JsonSQL]] for up-to-date documentation.
+
+This plugin provides a set of JSON-RPC handlers to receive submitted JSON, use !JsonSQL to generate SQL, perform the query, and return the
+results. This positions JsonSQLPlugin as a shim between Foswiki and an SQL database, proxying requests and data between the two.
+%ENDSECTION{"summary"}%
 
 %TOC%
 
-Learn how to create your own plugin in %SYSTEMWEB%.DevelopingPlugins.
-Documentation for Plugin API is in [[%SYSTEMWEB%.PerlDoc?module=Foswiki::Plugins::JsonSQLPlugin][PerlDoc for JsonSQLPlugin.pm]].
+---++ Overview
 
-<div class="foswikiHelp">%T% Note that JsonSQLPlugin is documentation only.  Its
-settings are ignored by =configure= and it cannot be enabled.</div>
+Consider you have some data in an SQL database that you would like to retrieve and display for Foswiki users. You use the following
+SELECT query,
+<verbatim>
+SELECT * from product_table 
+</verbatim>
 
----++ Preferences
+This is a simple, static query that is probably best hardcoded into a Perl plugin. No need for anything fancy. The plugin does the query
+and returns a TML-formatted result.
 
-Plugin preferences should be set using =configure=, as described in
-%SYSTEMWEB%.DevelopingPlugins.
+However, it is not so straightforward if you desire a more complex query. For example,
+<verbatim>
+SELECT product_id,product_name,quantity,unit_price FROM product_table WHERE ( product_id BETWEEN 3 AND 35 ) AND quantity > 5 
+</verbatim>
 
-You can also use [[%SYSTEMWEB%.PreferenceSettings][preference settings]]
-to define any user-controllable configuration. You are strongly advised
-to use the name of the plugin as a prefix, to avoid the risk of namespace
-clashes with other extensions that may try to use the same name.
+If you need to generate a query like the above using user input, you can attempt to capture the parameter space in an HTML form in a 
+user-friendly way, but input validation, query processing, and result formatting will have to be handled specifically for each query. If you
+have more than a few queries, or if your queries need to change in response to user input (ex: modifying the WHERE clause), this quickly
+becomes untenable.
 
-*BAD*
-   * Set EXAMPLE = Example setting
-   * Set FORMAT  = %d-%m-%y
-*Good*
-   * Set EMPTYPLUGIN_EXAMPLE = Example setting
-   * Set EMPTYPLUGIN_FORMAT  = %d-%m-%y
+Enter JsonSQLPlugin. By leveraging the !JsonSQL CPAN module, the above query becomes a snippet of JSON,
+<verbatim>
+{
+    "fields": [
+        {"column": "product_id"},
+        {"column": "product_name"},
+        {"column": "quantity"},
+        {"column": "unit_price"}
+    ],
+    "from": [
+        {"table": "product_table"}
+    ],
+    "where": {
+        "and": [
+            { "bt": {"field": {"column": "product_id"}, "minvalue": 3, "maxvalue": 35} },
+            { "gt": {"field": {"column": "quantity"}, "value": 5} }
+        ]
+    }
+}
+</verbatim>
+
+Since JSON is native to !JavaScript and the structure of the object is standardized by !JsonSQL, it can be easily generated on the client
+in response to user input. The JSON is transferred to the server via RPC, allowing for asynchronous processing, and server-side validation 
+is also handled in a standardized way. Once the query is performed the result is returned as JSON, allowing for easy formatting and display 
+using [[System.JQueryRender][JsRender]] templates or similar.
+
+---++ !JsonSQL CPAN Module
+
+The current !JsonSQL modules support SELECT and INSERT queries. Additional queries will be supported in the future, but with the current
+functionality you can generate SQL queries supporting a wide-range of common needs, including JOINS, DB schemas, and a very flexible
+WHERE clause. The SQL is generated with parameterized inputs to guard against SQL injection. This makes it useful for major databases such
+as !PostgreSQL, !MySQL, SQL Server, and Oracle. For other databases (ex: SQLite), verify support for parameterized input as well as support by
+the Perl DBI module before attempting to use with this plugin. SQL generation follows a fixed format and is not currently configurable.
+
+A simple SELECT statement,
+<verbatim>
+{
+    "fields": [
+        {"column": "*"}
+    ],
+    "from": [
+        {"table": "my_table"}
+    ]
+}
+
+Generates:
+  SELECT * FROM "my_table"
+</verbatim>
+
+A SELECT with JOIN,
+<verbatim>
+{
+    "fields": [
+        {"column": "field1"},
+        {"column": "field2", "alias": "test"}
+    ],
+    "joins": [
+        {"jointype": "inner", "from": {"table": "table1", "schema": "MySchema"}, "to": {"table": "table2", "schema": "MySchema"}, "on": {"eq": {"field": {"column": "field2"}, "value": {"column": "field1"}} }}
+    ]
+}
+
+Generates:
+  SELECT "field1","field2" AS "test" FROM "MySchema"."table1" INNER JOIN "MySchema"."table2" ON "field2" = "field1"
+</verbatim>
+
+A simple INSERT,
+<verbatim>
+{
+"inserts": [
+    {
+        "table": {"table": "table1", "schema": "MySchema"},
+        "values": [
+            {"column": "column1", "value": "value1"},
+            {"column": "column2", "value": "value2"}
+        ]
+    },
+    {
+        "table": {"table": "table2"},
+        "values": [
+            {"column": "columnA", "value": "valueA"},
+            {"column": "columnB", "value": "valueB"}
+        ]
+    }
+]
+}
+
+Generates:
+  INSERT INTO "MySchema"."table1" ("column1","column2") VALUES (?,?)
+  ["value1",value2"]
+  INSERT INTO "table2" ("columnA","columnB") VALUES (?,?)
+  ["valueA","valueB"]
+</verbatim>
+
+Additional examples and documentation are available in the !JsonSQL distribution. See for example,
+   * [[https://metacpan.org/pod/JsonSQL][JsonSQL]] -- The main documentation topic
+   * [[https://metacpan.org/pod/JsonSQL::Query::Select][JsonSQL::Query::Select]] -- Documentation for SELECT queries
+   * [[https://metacpan.org/pod/JsonSQL::Query::Insert][JsonSQL::Query::Insert]] -- Documentation for INSERT queries
+
+---+++ Limitations
+
+The SQL generation by !JsonSQL is database agnostic. This will change in the future, but currently it does not attempt to limit 
+SQL generation to the subset of features supported by a given database, so it is up to the user to verify support for their database. 
+That said, the generated SQL is ANSI-compliant, so any database that supports that standard should be able to use the generated 
+SQL (Oracle might be the biggest exception). !PostgreSQL support has been verified. Other databases have not been tested.
+
+---++ Security
+
+With the purpose of this plugin being to perform arbitrary SQL operations generated from user input on potentially critical databases,
+security is of paramount concern. The !JsonSQL CPAN modules and JsonSQLPlugin address security using several reinforcing mechanisms.
+   1 The first is the JSON schema enforcement by !JsonSQL. Both SELECT and INSERT queries represented as JSON objects must conform to a
+   structure that tries limit dangerous input while also maintaining flexibility. As such, table identifiers, for example, must meet the
+   regex requirement /^[a-zA-Z_][a-zA-Z0-9_]*$/. In other words, no special characters are allowed, and the first character must be a letter
+   or underscrore. To learn more about the schema requirements, see the documentation for the [[https://metacpan.org/pod/JsonSQL::Schemas::select][JsonSQL::Schema::Select]] 
+   and [[https://metacpan.org/pod/JsonSQL::Schemas::insert][JsonSQL::Schema::Insert]] modules.
+   1 The second is whitelisting of query generation to particular tables and columns that must be configured. !JsonSQL takes a set of whitelisting
+   rules as input when it is converting JSON to SQL. See [[https://metacpan.org/pod/JsonSQL::Validator#Whitelisting-Module][JsonSQL::Validator]]
+   for more details on how to construct this. JsonSQLPlugin takes a =configure= setting (see below) where these whitelisting rules are defined per user,
+   per database, and per database operation. Because the rules are set and applied server-side, it is an effective way to block most attempts 
+   at malicious query generation by untrusted clients.
+   1 Value-based input such as WHERE conditions are parameterized by placeholders, which has become a standard and recommended practice in
+   most database products. See [[http://bobby-tables.com/][Bobby Tables]] for a good description of the SQL injection attack.
+   1 Non-parameterizable input (such as table and column identifiers) are quoted.
+   1 Finally, the query itself is limited by both a =configure= setting that restricts operations to particular users, and database-level
+   controls. JsonSQLPlugin currently only supports basic username and password based authentication, but support for Kerberos and other
+   authentication mechanisms is planned for the future.
+
+While it is not possible to guarantee security, the combination of the above mitigation strategies should provide for reasonably safe dynamic
+SQL generation and execution.
+
+---++ JsonSQLPlugin Configuration
+#PluginConfiguration
+The JsonSQLPlugin will not operate until it is configured with the appropriate settings to connect to your database. There are two
+configuration items that are defined as Perl data structures. This makes it difficult to configure for novice users, so building a better
+configuration interface will be a future development effort. However, in the meantime, Perl data structures are similar to JSON, so if you
+are familiar with constructing JSON objects it should not be too hard to understand how to configure this module.
+
+---+++ dbconnections
+
+The $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbconnections} configuration item is a hash reference that takes the following form:
+<verbatim>
+    {
+        'dbname' => {
+            dsn => 'dsn',
+            allowSelect => [
+                {
+                    allowedGroup => 'WikiGroup' || allowedUser => 'WikiUser',
+                    whitelist_rules => [
+                        {
+                            schema => 'schema',
+                            'allowedTable' => ['allowedColumns'],
+                            'allowedTable' => ['allowedColumns']
+                        }
+                    ]
+                }
+            ]
+            allowInsert => <...>
+        }
+    }
+</verbatim>
+
+Each 'dbname' key of the hash reference is any valid string used to define the DB "namespace". The value of the key is a hash reference
+with the following properties:
+   * dsn -- A Data Source Name (DSN) string for connecting to your database. It needs to be in the format expected by the Perl DBI module.
+   * allowSelect -- An array of Foswiki users and groups and that are allowed SELECT access to this database, and the whitelist rules that
+   should be applied.
+   * allowInsert -- An array of Foswiki users and groups that are allowed INSERT access to  this database, and the whitelist rules that should
+   be applied.
+
+The whitelist rules must be in the format expected by [[https://metacpan.org/pod/JsonSQL::Validator#Whitelisting-Module][JsonSQL::Validator]].
+
+A complete example might look something like this:
+<verbatim>
+{
+    company_inventory => {
+        dsn => 'dbi:Pg:dbname=inventory;host=inventory.company.com',
+        allowSelect => [
+            {
+                allowedGroup => 'Customers',
+                whitelist_rules => [
+                    {
+                        schema => 'product_schema',
+                        'saleItems' => ['productId', 'productName', 'productPrice']
+                    }
+                ]
+            },
+            {
+                allowedGroup => 'Salesforce',
+                whitelist_rules => [
+                    {
+                        schema => 'product_schema',
+                        '#anyTable' => ''
+                    }
+                ]
+            }
+        ],
+        allowInsert => [
+            {
+                allowedGroup => 'ProductDevelopment',
+                whitelist_rules => [
+                    {
+                        schema => 'product_schema',
+                        'newItems' => ['#anyColumn']
+                    }
+                ]
+            },
+            {
+                allowedUser => 'DBAdmin',
+                whitelist_rules => [
+                    {
+                        schema => 'product_schema',
+                        '#anyTable' => ''
+                    }
+                ]
+            }
+        ]
+    }
+}
+</verbatim>
+
+The configuration is searched using the credentials of the currently logged in user. It is not possible to specify alternate user processing.
+If more than one set of connection settings for a given database apply to the current user (ex: user is a member of more than one allowedGroup), 
+the following rules are used to determine which settings to use:
+   * For users who are members of more than one group, group settings that come later in the allow* list override any settings that come earlier.
+   * If a user is subject to both group settings (ie: is a member of a group) and has specific settings defined for that user, the user 
+   settings will override any group settings.
+
+---+++ dbusermap
+
+The $Foswiki::cfg{Extensions}{JsonSQLPlugin}{dbusermap} configuration item is an array reference that takes the following form:
+<verbatim>
+[
+    {
+        allowedGroup => 'WikiGroup' || allowedUser => 'WikiUser',
+        'dbname' => {
+            default => {
+                user => 'user',
+                pass => 'pass'
+            },
+            select => {
+                user => 'user',
+                pass => 'pass'
+            },
+            insert => {
+                user => 'user',
+                pass => 'pass'
+            }
+        }
+    }
+]
+</verbatim>
+
+Each element of the array reference is a Fowiki user or group that is mapped to a set of DB user/pass credentials for each DB namespace they
+are allowed access to. The 'dbname' key is the same DB namespace used to define the dbconnection above. The value associated with each
+'dbname' key is a hash reference of one or more of the following keys:
+   * select -- the DB user credentials to use for SELECT operations
+   * insert -- the DB user credentials to use for INSERT operations
+   * default -- the DB user credentials to use if select or insert or both or not defined.
+
+A complete example to go with the above dbconnections example might look something like this:
+<verbatim>
+[
+    {
+        allowedGroup => 'Customers',
+        'company_inventory' => {
+            select => {
+                user => 'wikicustomer',
+                pass => 'wIKiCu$tomer%'
+            }
+        }
+    },
+    {
+        allowedGroup => 'Salesforce',
+        'company_inventory' => {
+            select => {
+                user => 'salesrep',
+                pass => '$Ales-ReP)'
+            }
+        }
+    },
+    {
+        allowedGroup => 'ProductDevelopment',
+        'company_inventory' => {
+            insert => {
+                user => 'pd_agent',
+                pass => 'secretpass'
+            }
+        }
+    },
+    {
+        allowedUser => 'DBAdmin',
+        'company_inventory' => {
+            default => {
+                user => 'dbadmin',
+                pass => 'verysecretpass'
+            }
+        }
+    }
+]
+</verbatim>
+
+As with the dbconnections configuration, the dbusermap configuration is searched using the credentials of the currently logged in user. 
+It is not possible to specify alternate user processing. If more than one set of user mappings for a given database+operation apply to the 
+current user (ex: user is a member of more than one allowedGroup), the following rules are used to determine which mappings to use:
+   * For users who are members of more than one group, group mappings that come later in the dbusermap list override any mappings that 
+   come earlier.
+   * If a user is subject to both group mappings (ie: is a member of a group) and has specific mappings defined for that user, the user 
+   mappings will override any group mappings.
+
+---+++ Why not DatabaseContrib?
+
+I looked at DatabaseContrib and had originally planned to use it for managing the database connection, but in the end I needed to manage
+the access rules in a different way for it to work with the !JsonSQL modules. I also wanted to simplify some of the settings to make it a bit
+more manageable. However, if there is a way to merge the two efforts I am open to reducing redundant functionality.
+
+---++ JSON-RPC Handlers
+
+The core of JsonSQLPlugin is the management of three (currently) JSON-RPC handlers for passing JSON-formatted SQL queries to the server.
+
+| *Namespace* | *Method* | *Description* |
+| jsondb | select | A simple SQL SELECT. Returns the result as a JSON string |
+| jsondb | selectwithsearch | Combines an SQL SELECT with a search for topics that match certain criteria. The results of the topic search are merged with the SELECT result and returned as a JSON string |
+| jsondb | insert | Does an SQL INSERT. Returns, as a JSON string, either # of rows inserted, or the results of a SELECT after the INSERT if the RETURNING clause is used |
+
+---+++ Params
+
+| *Method* | *Param* | *Description* | *Default* |
+| select | jsonQuery | The stringified JSON-formatted SQL query | None |
+|^| dbName | The name of the DB namespace to use as defined in the configuration settings. | None |
+| selectwithsearch | jsonQuery | The stringified JSON-formatted SQL query | None |
+|^| dbName | The name of the DB namespace to use as defined in the configuration settings. | None |
+|^| searchTopics | A stringified JSON object of topic search parameters with the following properties (see below) | None |
+| insert | jsonQuery | The stringified JSON-formatted SQL query | None |
+|^| dbName | The name of the DB namespace to use as defined in the configuration settings. | None |
+
+For "selectwithsearch", the searchTopics parameter takes the form:
+<verbatim>
+[
+    {
+        ** General search params **
+        "web": <The WEB to search in. No default, must be specified.>,
+        "query": <The Foswiki QuerySearch string to use for the SEARCH. Can be used instead of or in addition to the "form" and "topic" properties.>,
+        "form": <An attached FORM that should be searched for. Equivalent to "form.name ~ 'form'" in the query string.>,
+        "topic": <A topic name or glob to search for. Equivalent to "name ~ 'topic'" in the query string.>,
+        
+        ** Filtering results by DataForm values **
+        "formField": <A FORMFIELD value to extract from each found topic.>,
+        "queryField": <A field in the SQL query result. The value of this field is compared to the value stored in the DataForm specified by the "formField" property.>,
+        
+        ** Formatting return results **
+        "retKey": <The property to be added to each SQL query result with the names of Foswiki topics that match the search criteria.>
+        "retMany": <Return just the first matching topic found, or all of them. Default is 0 (return one)>
+    },
+    { <another set of search params> }
+]
+</verbatim>
+
+The primary use of "selectwithsearch" is to identify Foswiki topics that contain data from the SQL query result. This way, you can effectively
+manage a hybrid between unstructured data storage in Foswiki topics and structured data in an SQL database. To link them, you only need a
+a DataForm field in the topic to link SQL query results to that topic (or vice versa). Think of it as a rudimentary JOIN for Foswiki topics.
+
+---+++ Usage
+
+See JsonRpcContrib for details, but I've found the easiest method to be calling the $.jsonRpc() method. For example,
+<verbatim>
+var jsonQuery = {
+    "fields": [
+        {"column": "*"}
+    ],
+    "from": [
+        {"schema": "product_schema", "table": "saleItems"}
+    ]
+}
+
+var jsonParams = { jsonQuery: JSON.stringify(jsonQuery), dbName: 'company_inventory' };
+
+$.jsonRpc(
+    foswiki.getScriptUrl("jsonrpc"), {
+        namespace: "jsondb",
+        method: "select",
+        params: jsonParams,
+        error: function(jsonResponse, status, xhr) {
+            alert("Error: "+jsonResponse.error);
+        },
+        success: function(jsonResponse, status, xhr) {
+            alert("Success: "+jsonResponse.result);
+        }
+    }
+);
+</verbatim>
+
+---++ Putting it all together. A complete example.
+
+It's not possible to bundle a working example because an appropriate SQL DB needs to be available. But using the snippets provided in
+this doc, we can piece together a complete prototype that should be easily modifiable to fit your needs.
+
+First, configure JsonSQLPlugin with the appropriate connection settings and user mappings for your database and Foswiki users/groups. Using
+the snippets provided above in [[#PluginConfiguration][JsonSQLPlugin Configuration]], we need a !PostgreSQL database with the following structure:
+<verbatim>
+    inventory.company.com (host)
+        inventory (database)
+            product_schema (schema)
+                saleItems (table)
+                    productId (column)
+                    productName (column)
+                    productPrice (column)
+                newItems (table)
+                    <some columns>
+</verbatim>
+
+You are free to try this with a different database (ex: !MySQL). It should work, but not all of the features provided by 
+!JsonSQL (ex: DB schemas) are supported by !MySQL. So adjust accordingly.
+
+For this example, we will use a Foswiki user in the Foswiki group "Salesforce" to access the database, so the appropriate DB credentials
+have to be created. Populate the DB with some data.
+
+Now the code. In your SCRIPT HEAD,
+<verbatim>
+<!-- We are using JsRender to format and display the query result. -->
+<script id="productTmpl" type="text/x-jsrender">
+    <tr>
+        <td>{{:productId}}</td><td>{{:productName}}</td><td>{{:productPrice}}</td>
+    </tr>
+</script>
+
+<script type="text/javascript">
+(function($) {
+    var jsonQuery = {
+        "fields": [
+            {"column": "*"}
+        ],
+        "from": [
+            {"schema": "product_schema", "table": "saleItems"}
+        ]
+    };
+
+    var jsonParams = { jsonQuery: JSON.stringify(jsonQuery), dbName: 'company_inventory' };
+    
+    
+    /* -- On document.ready -- */
+    $(function() {
+        var resultTmpl = $.templates("#productTmpl");
+        
+        $.jsonRpc(
+            foswiki.getScriptUrl("jsonrpc"), {
+                namespace: "jsondb",
+                method: "select",
+                params: jsonParams,
+                error: function(jsonResponse, status, xhr) {
+                    alert("Error: "+jsonResponse.error);
+                },
+                success: function(jsonResponse, status, xhr) {
+                    var resultObj = JSON.parse(jsonResponse.result);
+                    $("#result > tbody").html(resultTmpl.render(resultObj));
+                }
+            }
+        );
+    });
+})(jQuery);
+</script>
+</verbatim>
+
+And in your BODY,
+<verbatim>
+    <table id="result">
+        <thead>
+            <tr>
+                <th>Product Id</th><th>Product Name</th><th>Product Price</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</verbatim>
+
+And that's it.
 
 ---++ Installation
 %$INSTALL_INSTRUCTIONS%
@@ -36,7 +519,7 @@ clashes with other extensions that may try to use the same name.
 
 ---++ Change History
 %TABLE{columnwidths="7em" tablewidth="100%"}%
-| | |
+| 0.4 | First public release. |
 
 %META:FORM{name="PackageForm"}%
 %META:FIELD{name="Author" title="Author" value="%25$CREATED_AUTHOR%25"}%

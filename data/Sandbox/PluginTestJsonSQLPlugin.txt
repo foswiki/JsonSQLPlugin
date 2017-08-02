@@ -1,4 +1,4 @@
-%META:TOPICINFO{author="ChrisHoefler" comment="" date="1471444556" format="1.1" reprev="5" version="5"}%
+%META:TOPICINFO{author="ChrisHoefler" comment="" date="1471882211" format="1.1" reprev="6" version="7"}%
 %META:TOPICPARENT{name="JsonSQLPlugin"}%
 ---+!! Testing !JsonSQLPlugin 
 
@@ -60,27 +60,6 @@ var tmpl = $.templates("#testTmpl");
 //$("#result").html(tmpl.render(testresult));
 </script>
 <script>
-var myObj =
-{
-   "fields": [
-      {"column": "field1"},
-      {"column": "field2", "alias": "test"}
-   ],
-   "from": [
-       {"table": "table1", "schema": "MySchema"}
-   ],
-   "where": {
-      "and": [
-          { "eq": {"field": {"column": "field2"}, "value": "Test.Field2"} },
-          { "eq": {"field": {"column": "field1"}, "value": "453.6"} },
-          { "or": [
-              { "eq": {"field": {"column": "field2"}, "value": "field3"} },
-              { "gt": {"field": {"column": "field3"}, "value": "45"} }
-          ]}
-      ]
-   }
-};
-
 var dbStmt =
 {
    "fields": [
@@ -94,39 +73,32 @@ var dbStmt =
 var dbStmtJoin =
 {
    "fields": [
-      {"column": "*"}
+      {"column": "strain_id", "table": "bacterial_strains"},
+      {"column": "clinical_category", "table": "bacterial_strains"},
+      {"column": "date_added", "table": "bacterial_strains"},
+      {"column": "primary_identifier", "table": "source_information"},
+      {"column": "primary_idtype", "table": "source_information"},
+      {"column": "isolation_type", "table": "strain_isolation"},
+      {"column": "firstname", "table": "strain_repos"},
+      {"column": "lastname", "table": "strain_repos"},
+      {"column": "institute", "table": "strain_repos"},
+      {"column": "institute_abbr", "table": "strain_repos"},
+      {"column": "location", "table": "strain_repos"},
+      {"column": "date_added", "table": "strain_repos"},
+      {"column": "genus", "table": "taxons"},
+      {"column": "species", "table": "taxons"},
+      {"column": "subspecies", "table": "taxons"}
    ],
    "joins": [
-      {"to": {"table": "bacterial_strains"}, "from": {"table": "db_users"}, "jointype": "inner", "on": {"eq": {"field": {"table": "bacterial_strains", "column": "entered_by"}, "value": {"table": "db_users", "column": "user_id"}}}}
-
-   ]
+      {"to": {"table": "source_information"}, "from": {"table": "bacterial_strains"}, "jointype": "inner", "on": {"eq": {"field": {"table": "bacterial_strains", "column": "source_id"}, "value": {"table": "source_information", "column": "source_id"}}}},
+{"to": {"table": "strain_isolation"}, "from": {"table": "source_information"}, "jointype": "inner", "on": {"eq": {"field": {"table": "source_information", "column": "isolation_id"}, "value": {"table": "strain_isolation", "column": "isolation_id"}}}},
+{"to": {"table": "strain_repos"}, "from": {"table": "source_information"}, "jointype": "inner", "on": {"eq": {"field": {"table": "source_information", "column": "repo_id"}, "value": {"table": "strain_repos", "column": "repo_id"}}}},
+{"to": {"table": "taxons"}, "from": {"table": "bacterial_strains"}, "jointype": "inner", "on": {"eq": {"field": {"table": "bacterial_strains", "column": "taxon_id"}, "value": {"table": "taxons", "column": "taxon_id"}}}}
+   ],
+   "where": {
+      "eq": {"field": {"column": "strain_id", "table": "bacterial_strains"}, "value": "1"}
+   }
 };
-
-$.jsonRpc(
-  "%SCRIPTURL{"jsonrpc"}%",
-  {
-    namespace: "jsontest",
-    method: "select",
-    params: {
-       jsonQuery: JSON.stringify(myObj),
-    },
-    error: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse); $("#jsonResponse").text(response) },
-    success: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse); $("#jsonResponse").text(response) }
-  }
-);
-
-$.jsonRpc(
-  "%SCRIPTURL{"jsonrpc"}%",
-  {
-    namespace: "jsondbget",
-    method: "select",
-    params: {
-       jsonQuery: JSON.stringify(dbStmt),
-    },
-    error: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse); $("#dbResponse").text(response) },
-    success: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse); $("#dbResponse").text(response) }
-  }
-);
 
 $.jsonRpc(
   "%SCRIPTURL{"jsonrpc"}%",
@@ -136,8 +108,8 @@ $.jsonRpc(
     params: {
        jsonQuery: JSON.stringify(dbStmtJoin),
     },
-    error: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(JSON.parse(jsonResponse.result), null, '\t'); $("#dbResponseJoin").text(response) },
-    success: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(JSON.parse(jsonResponse.result), null, '\t'); $("#dbResponseJoin").text(response); $("#result").html(tmpl.render(JSON.parse(jsonResponse.result))); }
+    error: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse.result); $('#result').text(response) },
+    success: function(jsonResponse, textStatus, xhr) { var response = JSON.stringify(jsonResponse.result); $('#result').text(response) }
   }
 );
 </script>
