@@ -161,13 +161,11 @@ sub _checkAcl {
             when ('insert') { $opkey = "allowInsert"; }
         }
 
-        Foswiki::Func::writeDebug("User: $user")   if DEBUG;
-        Foswiki::Func::writeDebug("OpKey: $opkey") if DEBUG;
+#        Foswiki::Func::writeDebug("User: $user")   if DEBUG;
+#        Foswiki::Func::writeDebug("OpKey: $opkey") if DEBUG;
 
         if ( exists( $connhash->{$dbname}->{$opkey} ) ) {
-            Foswiki::Func::writeDebug(
-                "Conn Hash: " . Dumper( $connhash->{$dbname}->{$opkey} ) )
-              if DEBUG;
+#            Foswiki::Func::writeDebug( "Conn Hash: " . Dumper( $connhash->{$dbname}->{$opkey} ) ) if DEBUG;
 
             # First check Foswiki groups
             my @acl_keys = grep {
@@ -176,8 +174,7 @@ sub _checkAcl {
                   && Foswiki::Func::isGroupMember( $_->{allowedGroup}, $user )
             } @{ $connhash->{$dbname}->{$opkey} };
 
-            Foswiki::Func::writeDebug( "Group ACL Keys: " . Dumper(@acl_keys) )
-              if DEBUG;
+#            Foswiki::Func::writeDebug( "Group ACL Keys: " . Dumper(@acl_keys) ) if DEBUG;
 
             # This will go in order through @acl_keys. Later definitions will override earlier definitions.
             for my $acl_key (@acl_keys) {
@@ -191,8 +188,7 @@ sub _checkAcl {
               grep { exists( $_->{allowedUser} ) && $_->{allowedUser} eq $user }
               @{ $connhash->{$dbname}->{$opkey} };
 
-            Foswiki::Func::writeDebug( "User ACL Keys: " . Dumper(@acl_keys) )
-              if DEBUG;
+#            Foswiki::Func::writeDebug( "User ACL Keys: " . Dumper(@acl_keys) ) if DEBUG;
 
             for my $acl_key (@acl_keys) {
                 if ( exists( $acl_key->{whitelist_rules} ) ) {
@@ -230,21 +226,19 @@ sub _doSelectQuery {
 
     my ( $whitelist_rules, $err ) = _checkAcl( $dbname, 'select' );
     if ($whitelist_rules) {
-        Foswiki::Func::writeDebug(
-            "Whitelist Rules: " . Dumper($whitelist_rules) )
-          if DEBUG;
+#        Foswiki::Func::writeDebug( "Whitelist Rules: " . Dumper($whitelist_rules) ) if DEBUG;
         my ( $selectObj, $err ) =
           JsonSQL::Query::Select->new( $whitelist_rules, $jsonQuery );
         if ($selectObj) {
             my ( $sql, $binds ) = $selectObj->get_select;
-            Foswiki::Func::writeDebug("SQL: $sql");
-            Foswiki::Func::writeDebug( "Bind Values: " . Dumper($binds) );
+#            Foswiki::Func::writeDebug("SQL: $sql");
+#            Foswiki::Func::writeDebug( "Bind Values: " . Dumper($binds) );
             my ( $dbh, $err ) = _dbConnect( $dbname, 'select' );
             if ($dbh) {
                 my $result =
                   $dbh->selectall_arrayref( $sql, { Slice => {} }, @$binds );
                 $dbh->disconnect;
-                Foswiki::Func::writeDebug( "Result: " . Dumper($result) );
+#                Foswiki::Func::writeDebug( "Result: " . Dumper($result) );
                 return $result;
             }
             else {
@@ -333,16 +327,16 @@ sub jsondbgetandsearch {
             $queryString = join( " AND ", @queryParams );
         }
 
-        Foswiki::Func::writeDebug( Dumper(@queryParams) ) if DEBUG;
-        Foswiki::Func::writeDebug($queryString)           if DEBUG;
-        Foswiki::Func::writeDebug( Dumper($search) )      if DEBUG;
+#        Foswiki::Func::writeDebug( Dumper(@queryParams) ) if DEBUG;
+#        Foswiki::Func::writeDebug($queryString)           if DEBUG;
+#        Foswiki::Func::writeDebug( Dumper($search) )      if DEBUG;
 
         my $topicSearchResult =
           Foswiki::Func::query( $queryString, undef, { web => $searchWeb } );
 
         while ( $topicSearchResult->hasNext ) {
             my $webtopic = $topicSearchResult->next;
-            Foswiki::Func::writeDebug($webtopic) if DEBUG;
+#            Foswiki::Func::writeDebug($webtopic) if DEBUG;
             my ( $web, $topic ) =
               Foswiki::Func::normalizeWebTopicName( '', $webtopic );
             my ($meta) = Foswiki::Func::readTopic( $web, $topic );
